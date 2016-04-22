@@ -22,6 +22,7 @@ import org.activiti.engine.RuntimeService;
 import org.activiti.engine.TaskService;
 import org.activiti.engine.history.HistoricProcessInstance;
 import org.activiti.engine.history.HistoricTaskInstance;
+import org.activiti.engine.runtime.Execution;
 import org.activiti.engine.runtime.ProcessInstance;
 import org.activiti.engine.task.Task;
 import org.junit.Assert;
@@ -53,6 +54,7 @@ public class ProcessTester {
   protected int nrOfAssertEquals;
   protected int nrOfAssertNulls;
   protected int nrOfAssertNotNulls;
+  protected int nrOfAssertTrues;
   
   
   public ProcessTester(ProcessEngine processEngine, BpmnModel bpmnModel) {
@@ -82,8 +84,8 @@ public class ProcessTester {
     
     shouldBeEqual("No executions should exist when the test has ended", 0, runtimeService.createExecutionQuery().count());
     
-    logger.info("Summary: visited {} start events, {} user tasks, {} subprocesses and {} end events in {} ms. Executed {} assertEquals, {} assertNulls and {} assertNotNulls.", 
-        nrOfStartEvents, nrOfUserTasks, nrOfSubProcesses, nrOfEndEvents, time, nrOfAssertEquals, nrOfAssertNulls, nrOfAssertNotNulls);
+    logger.info("Summary: visited {} start events, {} user tasks, {} subprocesses and {} end events in {} ms. Executed {} assertEquals, {} assertNulls, {} assertNotNulls and {} assertTrues.", 
+        nrOfStartEvents, nrOfUserTasks, nrOfSubProcesses, nrOfEndEvents, time, nrOfAssertEquals, nrOfAssertNulls, nrOfAssertNotNulls, nrOfAssertTrues);
   }
 
   protected void visitStartEvent(FlowElementsContainer flowElementsContainer, LinkedList<FlowNode> flowNodesToHandle)  {
@@ -145,6 +147,21 @@ public class ProcessTester {
   }
   
   protected void handleSubProcess(SubProcess subProcess, LinkedList<FlowNode> flowNodesToHandle)  {
+    
+    // Verify execution tree structure:
+    List<Execution> executions = runtimeService.createExecutionQuery().processInstanceId(processInstanceId).activityId(subProcess.getId()).list();
+    shouldBeTrue(executions != null && executions.size() > 0);
+    
+    for (Execution executionInSubProcess : executions) {
+      SubProcess parentSubProcess = subProcess.getSubProcess();
+      while (parentSubProcess != null) {
+        Execution parentExecution = runtimeService.createExecutionQuery().executionId(executionInSubProcess.getParentId()).singleResult();
+        shouldNotBeNull("Expected an execution for the parent subprocess", parentExecution);
+        shouldBeEqual(parentSubProcess.getId(), parentExecution.getActivityId());
+        parentSubProcess = parentSubProcess.getSubProcess();
+      }
+    }
+    
     visitStartEvent(subProcess, flowNodesToHandle);
   }
   
@@ -170,6 +187,8 @@ public class ProcessTester {
       shouldNotBeNull("Historic process instance should have end time", historicProcessInstance.getEndTime());
     }
   }
+  
+  // Helper methods
   
   protected void shouldBeEqual(Object left, Object rigjt) {
     Assert.assertEquals(left, rigjt);
@@ -209,6 +228,11 @@ public class ProcessTester {
   protected void shouldNotBeNull(Object obj) {
     Assert.assertNotNull(obj);
     nrOfAssertNotNulls++;
+  }
+  
+  protected void shouldBeTrue(boolean condition) {
+    Assert.assertTrue(condition);
+    nrOfAssertTrues++;
   }
   
 }
